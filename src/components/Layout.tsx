@@ -1,6 +1,6 @@
 
 import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import {
@@ -20,6 +20,7 @@ import {
   CreditCard,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -37,6 +38,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/components/ui/use-toast";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -44,6 +46,8 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   const navigationItems = [
@@ -53,6 +57,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleSignOut = () => {
+    toast({
+      title: "Signed out successfully",
+      description: "You have been signed out of your account",
+    });
+    navigate("/signin");
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
@@ -103,6 +115,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                         </Link>
                       </SheetClose>
                     ))}
+                    <div className="pt-4 mt-4 border-t">
+                      <SheetClose asChild>
+                        <Link
+                          to="/signin"
+                          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent text-muted-foreground"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Sign Out
+                        </Link>
+                      </SheetClose>
+                    </div>
                   </nav>
                 </div>
               </SheetContent>
@@ -139,15 +162,26 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   </Link>
                 </NavigationMenuItem>
               ))}
+              <NavigationMenuItem>
+                <Link 
+                  to="/signin" 
+                  className={cn(
+                    navigationMenuTriggerStyle(),
+                    isActive("/signin") && "bg-accent text-accent-foreground font-medium"
+                  )}
+                >
+                  Sign In
+                </Link>
+              </NavigationMenuItem>
             </NavigationMenuList>
           </NavigationMenu>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+              <Button variant="outline" className="relative h-10 w-10 rounded-full border-2 border-primary/20">
                 <Avatar className="h-8 w-8">
                   <AvatarImage src="/placeholder.svg" alt="User" />
-                  <AvatarFallback>U</AvatarFallback>
+                  <AvatarFallback className="bg-primary/10 text-primary font-medium">U</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
@@ -178,8 +212,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <span>Messages</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <span>Log out</span>
+              <DropdownMenuItem onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Sign Out</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

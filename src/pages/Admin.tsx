@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,12 +21,13 @@ import { parseCSV } from "@/lib/csv-parser";
 import { formatCurrency, formatDate, calculateDuration } from "@/lib/utils";
 import { calculatePayout } from "@/lib/payout-calculator";
 import { generateReceipt } from "@/lib/receipt-generator";
-import type { Session } from "@/types";
+import type { Session, Mentor } from "@/types";
 
 const AdminDashboard = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedMentorId, setSelectedMentorId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<string>("last30");
+  const [mentors, setMentors] = useState<Mentor[]>([]);
   const { toast } = useToast();
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -96,6 +96,16 @@ const AdminDashboard = () => {
       description: `Receipt #${receipt.id.substring(0, 8)} has been created`,
       variant: "default",
     });
+  };
+
+  const addMentor = () => {
+    const newMentor: Mentor = {
+      id: `mentor-${mentors.length + 1}`,
+      name: `New Mentor ${mentors.length + 1}`,
+      email: `mentor${mentors.length + 1}@example.com`, // Add email to fix type error
+    };
+    
+    setMentors((prev) => [...prev, newMentor]);
   };
 
   // Filter sessions based on date range

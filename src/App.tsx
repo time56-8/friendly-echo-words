@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/Admin";
 import MentorDashboard from "./pages/Mentor";
+import SignIn from "./pages/SignIn";
 
 const queryClient = new QueryClient();
 
@@ -21,6 +22,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/mentor" element={<MentorDashboard />} />
+          <Route path="/signin" element={<SignIn />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
