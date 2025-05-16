@@ -23,11 +23,19 @@ import { calculatePayout } from "@/lib/payout-calculator";
 import { generateReceipt } from "@/lib/receipt-generator";
 import type { Session, Mentor } from "@/types";
 
+// Define a new interface for the mentor data with additional properties
+interface MentorWithSessions {
+  mentorId: string;
+  mentorName: string;
+  sessions: Session[];
+  totalAmount: number;
+}
+
 const AdminDashboard = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedMentorId, setSelectedMentorId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<string>("last30");
-  const [mentors, setMentors] = useState<Mentor[]>([]);
+  const [mentorsList, setMentorsList] = useState<Mentor[]>([]);
   const { toast } = useToast();
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,9 +92,11 @@ const AdminDashboard = () => {
       return;
     }
 
-    const mentor = {
+    // Create a proper Mentor object with all required properties
+    const mentor: Mentor = {
       id: selectedMentorId,
       name: mentorSessions[0]?.mentorName || "Unknown Mentor",
+      email: `${selectedMentorId}@example.com`, // Add email to satisfy the Mentor interface
     };
 
     const receipt = generateReceipt(mentor, mentorSessions);
@@ -100,12 +110,12 @@ const AdminDashboard = () => {
 
   const addMentor = () => {
     const newMentor: Mentor = {
-      id: `mentor-${mentors.length + 1}`,
-      name: `New Mentor ${mentors.length + 1}`,
-      email: `mentor${mentors.length + 1}@example.com`, // Add email to fix type error
+      id: `mentor-${mentorsList.length + 1}`,
+      name: `New Mentor ${mentorsList.length + 1}`,
+      email: `mentor${mentorsList.length + 1}@example.com`,
     };
     
-    setMentors((prev) => [...prev, newMentor]);
+    setMentorsList((prev) => [...prev, newMentor]);
   };
 
   // Filter sessions based on date range
@@ -147,17 +157,13 @@ const AdminDashboard = () => {
     groups[session.mentorId].totalAmount += (session.ratePerHour / 60) * session.duration;
     
     return groups;
-  }, {} as Record<string, {
-    mentorId: string;
-    mentorName: string;
-    sessions: Session[];
-    totalAmount: number;
-  }>);
+  }, {} as Record<string, MentorWithSessions>);
   
-  const mentors = Object.values(mentorGroups);
+  // Rename to mentorWithSessions to avoid naming conflict
+  const mentorsWithSessions: MentorWithSessions[] = Object.values(mentorGroups);
 
   // Data for charts
-  const mentorChartData = mentors.map(mentor => ({
+  const mentorChartData = mentorsWithSessions.map(mentor => ({
     name: mentor.mentorName,
     amount: mentor.totalAmount,
   }));
@@ -248,7 +254,7 @@ const AdminDashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(mentors.reduce((sum, mentor) => sum + calculatePayout(mentor.sessions), 0))}
+                {formatCurrency(mentorsWithSessions.reduce((sum, mentor) => sum + calculatePayout(mentor.sessions), 0))}
               </div>
               <p className="text-xs text-muted-foreground">
                 After platform fees and taxes
@@ -262,7 +268,7 @@ const AdminDashboard = () => {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mentors.length}</div>
+              <div className="text-2xl font-bold">{mentorsWithSessions.length}</div>
               <p className="text-xs text-muted-foreground">
                 With recent sessions
               </p>
@@ -275,7 +281,7 @@ const AdminDashboard = () => {
               <MessageSquare className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mentors.length}</div>
+              <div className="text-2xl font-bold">{mentorsWithSessions.length}</div>
               <p className="text-xs text-muted-foreground">
                 Ready to be generated
               </p>
@@ -292,7 +298,7 @@ const AdminDashboard = () => {
           
           <TabsContent value="mentors" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {mentors.map(mentor => (
+              {mentorsWithSessions.map(mentor => (
                 <Card 
                   key={mentor.mentorId} 
                   className={selectedMentorId === mentor.mentorId ? "border-primary" : ""}
