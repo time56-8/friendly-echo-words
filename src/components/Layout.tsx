@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -21,6 +20,7 @@ import {
   Menu,
   X,
   LogOut,
+  LogIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -39,6 +39,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/context/AuthContext";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -48,17 +49,32 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isAuthenticated, userRole, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  const navigationItems = [
-    { path: "/", label: "Home", icon: Home },
-    { path: "/admin", label: "Admin", icon: FileText },
-    { path: "/mentor", label: "Mentor", icon: User },
-  ];
+  // Define navigation items based on auth state
+  const getNavigationItems = () => {
+    const items = [
+      { path: "/", label: "Home", icon: Home }
+    ];
+    
+    if (isAuthenticated) {
+      if (userRole === 'admin') {
+        items.push({ path: "/admin", label: "Admin Dashboard", icon: FileText });
+      } else if (userRole === 'mentor') {
+        items.push({ path: "/mentor", label: "Mentor Dashboard", icon: User });
+      }
+    }
+    
+    return items;
+  };
+  
+  const navigationItems = getNavigationItems();
 
   const isActive = (path: string) => location.pathname === path;
 
   const handleSignOut = () => {
+    logout();
     toast({
       title: "Signed out successfully",
       description: "You have been signed out of your account",
@@ -117,13 +133,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     ))}
                     <div className="pt-4 mt-4 border-t">
                       <SheetClose asChild>
-                        <Link
-                          to="/signin"
-                          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent text-muted-foreground"
-                        >
-                          <LogOut className="h-4 w-4" />
-                          Sign Out
-                        </Link>
+                        {isAuthenticated ? (
+                          <Link
+                            to="/"
+                            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent text-muted-foreground"
+                            onClick={handleSignOut}
+                          >
+                            <LogOut className="h-4 w-4" />
+                            Sign Out
+                          </Link>
+                        ) : (
+                          <Link
+                            to="/signin"
+                            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent text-muted-foreground"
+                          >
+                            <LogIn className="h-4 w-4" />
+                            Sign In
+                          </Link>
+                        )}
                       </SheetClose>
                     </div>
                   </nav>
@@ -163,61 +190,82 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </NavigationMenuItem>
               ))}
               <NavigationMenuItem>
-                <Link 
-                  to="/signin" 
-                  className={cn(
-                    navigationMenuTriggerStyle(),
-                    isActive("/signin") && "bg-accent text-accent-foreground font-medium"
-                  )}
-                >
-                  Sign In
-                </Link>
+                {!isAuthenticated ? (
+                  <Link 
+                    to="/signin" 
+                    className={cn(
+                      navigationMenuTriggerStyle(),
+                      isActive("/signin") && "bg-accent text-accent-foreground font-medium"
+                    )}
+                  >
+                    Sign In
+                  </Link>
+                ) : (
+                  <Link 
+                    to="/" 
+                    onClick={handleSignOut}
+                    className={navigationMenuTriggerStyle()}
+                  >
+                    Sign Out
+                  </Link>
+                )}
               </NavigationMenuItem>
             </NavigationMenuList>
           </NavigationMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="relative h-10 w-10 rounded-full border-2 border-primary/20">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src="/placeholder.svg" alt="User" />
-                  <AvatarFallback className="bg-primary/10 text-primary font-medium">U</AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="end" forceMount>
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">User</p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    user@example.com
-                  </p>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <User className="mr-2 h-4 w-4" />
-                <span>Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCard className="mr-2 h-4 w-4" />
-                <span>Billing</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Calendar className="mr-2 h-4 w-4" />
-                <span>Calendar</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <MessageSquare className="mr-2 h-4 w-4" />
-                <span>Messages</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut}>
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {isAuthenticated ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="relative h-10 w-10 rounded-full border-2 border-primary/20">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src="/placeholder.svg" alt="User" />
+                    <AvatarFallback className="bg-primary/10 text-primary font-medium">
+                      {userRole === 'admin' ? 'A' : 'M'}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      {userRole === 'admin' ? 'Admin' : 'Mentor'}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {userRole === 'admin' ? 'admin@edpay.com' : 'mentor@edpay.com'}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  <span>Billing</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Calendar className="mr-2 h-4 w-4" />
+                  <span>Calendar</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  <span>Messages</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Sign Out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button onClick={() => navigate("/signin")}>
+              <LogIn className="mr-2 h-4 w-4" />
+              Sign In
+            </Button>
+          )}
         </div>
       </header>
       

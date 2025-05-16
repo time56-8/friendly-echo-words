@@ -1,6 +1,5 @@
-
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,13 +7,27 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { FileCheck, User } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 const SignIn = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  const { login, isAuthenticated, userRole } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [userType, setUserType] = useState("admin");
+
+  // Check if user is already authenticated and redirect to appropriate page
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (userRole === 'admin') {
+        navigate('/admin');
+      } else if (userRole === 'mentor') {
+        navigate('/mentor');
+      }
+    }
+  }, [isAuthenticated, userRole, navigate]);
 
   const handleSignIn = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,37 +41,24 @@ const SignIn = () => {
       return;
     }
 
-    // This is a simplified authentication. In a real app, you would validate credentials against a backend
-    if (userType === "admin") {
-      // Mock admin authentication
-      if (email === "admin@edpay.com" && password === "password") {
-        toast({
-          title: "Welcome back!",
-          description: "You have successfully signed in as Admin",
-        });
-        navigate("/admin");
-      } else {
-        toast({
-          title: "Authentication Failed",
-          description: "Invalid admin credentials",
-          variant: "destructive",
-        });
-      }
+    const success = login(email, password);
+    
+    if (success) {
+      toast({
+        title: "Welcome back!",
+        description: `You have successfully signed in as ${userType === 'admin' ? 'Admin' : 'Mentor'}`,
+      });
+      
+      // Get the redirect path from location state or default to the appropriate dashboard
+      const from = location.state?.from?.pathname || 
+                  (userType === 'admin' ? '/admin' : '/mentor');
+      navigate(from);
     } else {
-      // Mock mentor authentication
-      if (email.includes("mentor") && password === "password") {
-        toast({
-          title: "Welcome back!",
-          description: "You have successfully signed in as Mentor",
-        });
-        navigate("/mentor");
-      } else {
-        toast({
-          title: "Authentication Failed",
-          description: "Invalid mentor credentials",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Authentication Failed",
+        description: "Invalid credentials",
+        variant: "destructive",
+      });
     }
   };
 
