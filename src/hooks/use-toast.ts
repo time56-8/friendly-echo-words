@@ -1,4 +1,5 @@
 
+import * as React from "react"
 import { type ToastActionElement, type ToastProps } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 5
@@ -136,7 +137,7 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">
 
-function toast({ ...props }: Toast) {
+function toast(props: Toast) {
   const id = genId()
 
   const update = (props: ToasterToast) =>
