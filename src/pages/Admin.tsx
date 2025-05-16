@@ -1,71 +1,54 @@
 
 import React, { useState } from "react";
 import Layout from "@/components/Layout";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
+  PieChart, Pie, Cell
+} from "recharts";
+import { Calendar, ChevronDown, Download, FileText, Filter, MessageSquare, Plus, Upload, Users } from "lucide-react";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { SessionDialog } from "@/components/SessionDialog";
 import { parseCSV } from "@/lib/csv-parser";
-import type { Session, Mentor, Receipt } from "@/types";
+import { formatCurrency, formatDate, calculateDuration } from "@/lib/utils";
 import { calculatePayout } from "@/lib/payout-calculator";
 import { generateReceipt } from "@/lib/receipt-generator";
-import { ChatPanel } from "@/components/ChatPanel";
+import type { Session } from "@/types";
 
 const AdminDashboard = () => {
-  const { toast } = useToast();
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [mentors, setMentors] = useState<Mentor[]>([
-    { id: "1", name: "John Doe", email: "john@example.com" },
-    { id: "2", name: "Jane Smith", email: "jane@example.com" },
-    { id: "3", name: "Alex Johnson", email: "alex@example.com" },
-  ]);
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedMentor, setSelectedMentor] = useState<Mentor | null>(null);
-  const [selectedDateRange, setSelectedDateRange] = useState<string>("30");
-  const [auditLogs, setAuditLogs] = useState<any[]>([
-    { id: 1, action: "Session Added", user: "Admin", timestamp: new Date().toISOString(), details: "Added session for Jane Smith" },
-    { id: 2, action: "Receipt Generated", user: "Admin", timestamp: new Date().toISOString(), details: "Generated receipt for John Doe" },
-  ]);
+  const [selectedMentorId, setSelectedMentorId] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<string>("last30");
+  const { toast } = useToast();
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
       try {
-        const csvData = event.target?.result as string;
-        const parsedSessions = parseCSV(csvData);
-        
-        setSessions(prev => [...prev, ...parsedSessions]);
-        addAuditLog(`Uploaded ${parsedSessions.length} sessions via CSV`);
-        
+        const parsedSessions = parseCSV(content);
+        setSessions(prevSessions => [...prevSessions, ...parsedSessions]);
         toast({
-          title: "CSV Upload Successful",
-          description: `${parsedSessions.length} sessions imported successfully.`,
+          title: "Sessions imported",
+          description: `Successfully imported ${parsedSessions.length} sessions`,
+          variant: "default",
         });
       } catch (error) {
         toast({
-          title: "CSV Upload Failed",
-          description: "There was an error processing the CSV file.",
+          title: "Import failed",
+          description: "There was an error parsing the CSV file",
           variant: "destructive",
         });
       }
@@ -73,317 +56,391 @@ const AdminDashboard = () => {
     reader.readAsText(file);
   };
 
-  const addSession = (sessionData: Session) => {
-    setSessions(prev => [...prev, sessionData]);
-    addAuditLog(`Added session for ${sessionData.mentorName}`);
+  const handleAddSession = () => {
+    // This would open a modal to add a session manually
     toast({
-      title: "Session Added",
-      description: `Session for ${sessionData.mentorName} on ${new Date(sessionData.date).toLocaleDateString()} added successfully.`,
+      title: "Add session",
+      description: "Session creation form will appear here",
     });
   };
 
-  const addAuditLog = (details: string) => {
-    const newLog = {
-      id: auditLogs.length + 1,
-      action: "System Action",
-      user: "Admin",
-      timestamp: new Date().toISOString(),
-      details
-    };
-    setAuditLogs(prev => [newLog, ...prev]);
-  };
-
-  const generatePayoutReceipt = (mentorId: string) => {
-    const mentor = mentors.find(m => m.id === mentorId);
-    if (!mentor) return;
-    
-    const mentorSessions = sessions.filter(s => s.mentorId === mentorId);
-    if (mentorSessions.length === 0) {
+  const handleGenerateReceipt = () => {
+    if (!selectedMentorId) {
       toast({
-        title: "No Sessions Found",
-        description: `No sessions found for ${mentor.name}.`,
+        title: "No mentor selected",
+        description: "Please select a mentor to generate a receipt",
         variant: "destructive",
       });
       return;
     }
-    
-    const payoutAmount = calculatePayout(mentorSessions);
-    const receipt = generateReceipt(mentor, mentorSessions, payoutAmount);
-    
-    setReceipts(prev => [...prev, receipt]);
-    addAuditLog(`Generated receipt for ${mentor.name}`);
+
+    const mentorSessions = sessions.filter(s => s.mentorId === selectedMentorId);
+    if (mentorSessions.length === 0) {
+      toast({
+        title: "No sessions found",
+        description: "This mentor has no sessions to generate a receipt for",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const mentor = {
+      id: selectedMentorId,
+      name: mentorSessions[0]?.mentorName || "Unknown Mentor",
+    };
+
+    const receipt = generateReceipt(mentor, mentorSessions);
     
     toast({
-      title: "Receipt Generated",
-      description: `Receipt for ${mentor.name} generated successfully.`,
+      title: "Receipt generated",
+      description: `Receipt #${receipt.id.substring(0, 8)} has been created`,
+      variant: "default",
     });
   };
 
+  // Filter sessions based on date range
   const getFilteredSessions = () => {
-    if (!selectedDateRange) return sessions;
-    
     const now = new Date();
-    const daysAgo = parseInt(selectedDateRange);
-    const compareDate = new Date();
-    compareDate.setDate(now.getDate() - daysAgo);
+    const filterDate = new Date();
     
-    return sessions.filter(session => new Date(session.date) >= compareDate);
+    switch (dateRange) {
+      case "last7":
+        filterDate.setDate(now.getDate() - 7);
+        break;
+      case "last15":
+        filterDate.setDate(now.getDate() - 15);
+        break;
+      case "last30":
+        filterDate.setDate(now.getDate() - 30);
+        break;
+      default:
+        filterDate.setDate(now.getDate() - 30);
+    }
+
+    return sessions.filter(session => new Date(session.date) >= filterDate);
   };
 
   const filteredSessions = getFilteredSessions();
+  
+  // Group sessions by mentor
+  const mentorGroups = filteredSessions.reduce((groups, session) => {
+    if (!groups[session.mentorId]) {
+      groups[session.mentorId] = {
+        mentorId: session.mentorId,
+        mentorName: session.mentorName,
+        sessions: [],
+        totalAmount: 0,
+      };
+    }
+    
+    groups[session.mentorId].sessions.push(session);
+    groups[session.mentorId].totalAmount += (session.ratePerHour / 60) * session.duration;
+    
+    return groups;
+  }, {} as Record<string, {
+    mentorId: string;
+    mentorName: string;
+    sessions: Session[];
+    totalAmount: number;
+  }>);
+  
+  const mentors = Object.values(mentorGroups);
+
+  // Data for charts
+  const mentorChartData = mentors.map(mentor => ({
+    name: mentor.mentorName,
+    amount: mentor.totalAmount,
+  }));
+  
+  const sessionTypeData = filteredSessions.reduce((types, session) => {
+    if (!types[session.type]) {
+      types[session.type] = 0;
+    }
+    types[session.type]++;
+    return types;
+  }, {} as Record<string, number>);
+  
+  const sessionTypeChartData = Object.entries(sessionTypeData).map(([name, value]) => ({ name, value }));
+
+  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE'];
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <Button onClick={() => setIsDialogOpen(true)}>Add Session</Button>
+      <div className="space-y-6 p-4 md:p-6">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+            <p className="text-muted-foreground">
+              Manage mentor sessions and payouts in one place
+            </p>
+          </div>
+          
+          <div className="flex gap-2">
+            <Button onClick={handleAddSession}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Session
+            </Button>
+            
+            <Button variant="outline" asChild>
+              <label>
+                <Upload className="mr-2 h-4 w-4" />
+                Import CSV
+                <input 
+                  type="file" 
+                  onChange={handleFileUpload} 
+                  className="hidden" 
+                  accept=".csv" 
+                />
+              </label>
+            </Button>
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Filter className="mr-2 h-4 w-4" />
+                  Filter
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => setDateRange("last7")}>
+                  Last 7 Days
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateRange("last15")}>
+                  Last 15 Days
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateRange("last30")}>
+                  Last 30 Days
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
-        <Tabs defaultValue="sessions">
-          <TabsList className="grid w-full grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Sessions</CardTitle>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{filteredSessions.length}</div>
+              <p className="text-xs text-muted-foreground">
+                For {dateRange === "last7" ? "past week" : dateRange === "last15" ? "past 15 days" : "past month"}
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Payout</CardTitle>
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {formatCurrency(mentors.reduce((sum, mentor) => sum + calculatePayout(mentor.sessions), 0))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                After platform fees and taxes
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Mentors</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{mentors.length}</div>
+              <p className="text-xs text-muted-foreground">
+                With recent sessions
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pending Receipts</CardTitle>
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{mentors.length}</div>
+              <p className="text-xs text-muted-foreground">
+                Ready to be generated
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Tabs defaultValue="mentors" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="mentors">Mentors</TabsTrigger>
             <TabsTrigger value="sessions">Sessions</TabsTrigger>
-            <TabsTrigger value="payouts">Payouts & Receipts</TabsTrigger>
-            <TabsTrigger value="communications">Communications</TabsTrigger>
-            <TabsTrigger value="audit">Audit Logs</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="sessions" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Session Data</CardTitle>
-                <CardDescription>Manage mentor session information</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap items-center gap-4">
-                  <div>
-                    <label htmlFor="date-filter" className="text-sm font-medium">Filter by date range:</label>
-                    <select
-                      id="date-filter"
-                      value={selectedDateRange}
-                      onChange={(e) => setSelectedDateRange(e.target.value)}
-                      className="ml-2 rounded-md border border-input bg-background p-1"
-                    >
-                      <option value="7">Last 7 days</option>
-                      <option value="15">Last 15 days</option>
-                      <option value="30">Last 30 days</option>
-                      <option value="90">Last 90 days</option>
-                      <option value="">All time</option>
-                    </select>
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <Input
-                      id="csv-upload"
-                      type="file"
-                      accept=".csv"
-                      onChange={handleFileUpload}
-                      className="max-w-xs"
-                    />
-                    <Button variant="outline">Upload CSV</Button>
-                  </div>
-                </div>
-                
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Mentor</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Session Type</TableHead>
-                        <TableHead>Duration</TableHead>
-                        <TableHead>Rate (₹/hr)</TableHead>
-                        <TableHead>Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredSessions.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center">No sessions found</TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredSessions.map((session) => (
-                          <TableRow key={session.id}>
-                            <TableCell>{session.mentorName}</TableCell>
-                            <TableCell>{new Date(session.date).toLocaleDateString()}</TableCell>
-                            <TableCell>{session.type}</TableCell>
-                            <TableCell>{session.duration} mins</TableCell>
-                            <TableCell>₹{session.ratePerHour}</TableCell>
-                            <TableCell>₹{Math.round((session.ratePerHour / 60) * session.duration)}</TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          
-          <TabsContent value="payouts">
-            <Card>
-              <CardHeader>
-                <CardTitle>Payout Management</CardTitle>
-                <CardDescription>Generate and manage mentor payouts</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="mb-4 text-lg font-medium">Generate Receipts</h3>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-                      {mentors.map(mentor => (
-                        <Card key={mentor.id} className="transition-all hover:shadow-md">
-                          <CardHeader>
-                            <CardTitle className="text-base">{mentor.name}</CardTitle>
-                            <CardDescription>{mentor.email}</CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            <p className="text-sm">
-                              Sessions: {sessions.filter(s => s.mentorId === mentor.id).length}
-                            </p>
-                          </CardContent>
-                          <CardFooter className="flex justify-between">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => setSelectedMentor(mentor)}
-                            >
-                              Details
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              onClick={() => generatePayoutReceipt(mentor.id)}
-                            >
-                              Generate Receipt
-                            </Button>
-                          </CardFooter>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <h3 className="mb-4 text-lg font-medium">Recent Receipts</h3>
-                    <div className="rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Mentor</TableHead>
-                            <TableHead>Date Generated</TableHead>
-                            <TableHead>Amount</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {receipts.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={5} className="text-center">No receipts generated yet</TableCell>
-                            </TableRow>
-                          ) : (
-                            receipts.map(receipt => (
-                              <TableRow key={receipt.id}>
-                                <TableCell>{receipt.mentorName}</TableCell>
-                                <TableCell>{new Date(receipt.generatedDate).toLocaleDateString()}</TableCell>
-                                <TableCell>₹{receipt.totalAmount}</TableCell>
-                                <TableCell>{receipt.status}</TableCell>
-                                <TableCell>
-                                  <Button variant="outline" size="sm">View</Button>
-                                  <Button variant="outline" size="sm" className="ml-2">Send</Button>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          
-          <TabsContent value="communications">
-            <Card>
-              <CardHeader>
-                <CardTitle>Communications</CardTitle>
-                <CardDescription>Chat with mentors about their payouts</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                  <div className="col-span-1">
-                    <div className="rounded-md border p-4">
-                      <h3 className="mb-4 font-medium">Select Mentor</h3>
-                      <ul className="space-y-2">
-                        {mentors.map((mentor) => (
-                          <li 
-                            key={mentor.id}
-                            onClick={() => setSelectedMentor(mentor)}
-                            className={`cursor-pointer rounded-md p-2 hover:bg-gray-100 ${
-                              selectedMentor?.id === mentor.id ? 'bg-gray-100' : ''
-                            }`}
-                          >
-                            {mentor.name}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                  <div className="col-span-2">
-                    {selectedMentor ? (
-                      <ChatPanel mentor={selectedMentor} />
-                    ) : (
-                      <div className="flex h-[400px] items-center justify-center rounded-md border">
-                        <p className="text-gray-500">Select a mentor to start chatting</p>
+          <TabsContent value="mentors" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {mentors.map(mentor => (
+                <Card 
+                  key={mentor.mentorId} 
+                  className={selectedMentorId === mentor.mentorId ? "border-primary" : ""}
+                >
+                  <CardHeader>
+                    <CardTitle>{mentor.mentorName}</CardTitle>
+                    <CardDescription>
+                      {mentor.sessions.length} sessions, {calculateDuration(mentor.sessions.reduce((total, s) => total + s.duration, 0))}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Base Amount:</span>
+                        <span>{formatCurrency(mentor.totalAmount)}</span>
                       </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Platform Fee (5%):</span>
+                        <span>-{formatCurrency(mentor.totalAmount * 0.05)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">GST (18%):</span>
+                        <span>-{formatCurrency(mentor.totalAmount * 0.18)}</span>
+                      </div>
+                      <div className="border-t pt-2 flex justify-between font-bold">
+                        <span>Payout Amount:</span>
+                        <span>{formatCurrency(calculatePayout(mentor.sessions))}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex justify-between">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setSelectedMentorId(mentor.mentorId)}
+                    >
+                      Select
+                    </Button>
+                    <Button 
+                      onClick={handleGenerateReceipt}
+                      disabled={selectedMentorId !== mentor.mentorId}
+                    >
+                      Generate Receipt
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
           </TabsContent>
           
-          <TabsContent value="audit">
+          <TabsContent value="sessions">
             <Card>
               <CardHeader>
-                <CardTitle>Audit Logs</CardTitle>
-                <CardDescription>Track all system actions and changes</CardDescription>
+                <CardTitle>Recent Sessions</CardTitle>
+                <CardDescription>
+                  Showing {filteredSessions.length} sessions for the selected period
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Timestamp</TableHead>
-                        <TableHead>Action</TableHead>
-                        <TableHead>User</TableHead>
-                        <TableHead>Details</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {auditLogs.map(log => (
-                        <TableRow key={log.id}>
-                          <TableCell>{new Date(log.timestamp).toLocaleString()}</TableCell>
-                          <TableCell>{log.action}</TableCell>
-                          <TableCell>{log.user}</TableCell>
-                          <TableCell>{log.details}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <div className="w-full overflow-auto">
+                    <table className="w-full caption-bottom text-sm">
+                      <thead className="border-b [&_tr]:border-b">
+                        <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Date</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Mentor</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Type</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Duration</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Rate (₹/hr)</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="[&_tr:last-child]:border-0">
+                        {filteredSessions.map((session) => (
+                          <tr key={session.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                            <td className="p-4 align-middle">{formatDate(session.date)}</td>
+                            <td className="p-4 align-middle">{session.mentorName}</td>
+                            <td className="p-4 align-middle">{session.type}</td>
+                            <td className="p-4 align-middle">{calculateDuration(session.duration)}</td>
+                            <td className="p-4 align-middle">{formatCurrency(session.ratePerHour)}</td>
+                            <td className="p-4 align-middle">
+                              {formatCurrency((session.ratePerHour / 60) * session.duration)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </CardContent>
+              <CardFooter>
+                <Button variant="outline" className="ml-auto">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export CSV
+                </Button>
+              </CardFooter>
             </Card>
+          </TabsContent>
+          
+          <TabsContent value="analytics">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Payout Distribution by Mentor</CardTitle>
+                  <CardDescription>
+                    Breakdown of payouts per mentor for the selected period
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={mentorChartData}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={70} />
+                      <YAxis />
+                      <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                      <Legend />
+                      <Bar dataKey="amount" fill="#8884d8" name="Payout Amount" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Sessions by Type</CardTitle>
+                  <CardDescription>
+                    Distribution of sessions by type
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={sessionTypeChartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      >
+                        {sessionTypeChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
-      
-      <SessionDialog 
-        open={isDialogOpen} 
-        onOpenChange={setIsDialogOpen}
-        onAddSession={addSession}
-        mentors={mentors}
-      />
     </Layout>
   );
 };
