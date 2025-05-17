@@ -15,6 +15,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
   const location = useLocation();
   const hasShownToast = useRef(false);
   
+  // Clear toast reference when component unmounts
+  useEffect(() => {
+    return () => {
+      hasShownToast.current = false;
+    };
+  }, [location.pathname]); // Reset when path changes
+  
   useEffect(() => {
     if (!isAuthenticated && !hasShownToast.current) {
       toast({
