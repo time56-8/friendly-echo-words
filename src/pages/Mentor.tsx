@@ -6,15 +6,39 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, Download, FileCheck, FileText, MessageSquare, PieChart } from "lucide-react";
+import { Calendar, Download, FileCheck, FileText, MessageSquare, PieChart, Check, X } from "lucide-react";
 import { formatCurrency, formatDate, calculateDuration } from "@/lib/utils";
 import { calculatePayout } from "@/lib/payout-calculator";
 import type { Session, Receipt } from "@/types";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { useToast } from "@/components/ui/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+// Session status type
+type SessionStatus = 'upcoming' | 'completed' | 'cancelled';
+
+// Extended Session type with status
+interface MentorSession extends Session {
+  status?: SessionStatus;
+  notes?: string;
+}
 
 const MentorDashboard = () => {
+  const { toast } = useToast();
+  
   // In a real application, this would come from an API
-  const [mentor] = useState({
+  const [mentor, setMentor] = useState({
     id: "mentor-1",
     name: "Jane Doe",
     email: "jane.doe@example.com",
@@ -28,6 +52,8 @@ const MentorDashboard = () => {
         type: "Live Session",
         duration: 60,
         ratePerHour: 4000,
+        status: "upcoming",
+        notes: "",
       },
       {
         id: "session-2",
@@ -37,6 +63,8 @@ const MentorDashboard = () => {
         type: "Evaluation",
         duration: 30,
         ratePerHour: 4000,
+        status: "upcoming",
+        notes: "",
       },
       {
         id: "session-3",
@@ -46,8 +74,10 @@ const MentorDashboard = () => {
         type: "Live Session",
         duration: 90,
         ratePerHour: 4000,
+        status: "completed",
+        notes: "Student performed well. Ready for advanced topics.",
       },
-    ] as Session[],
+    ] as MentorSession[],
     receipts: [
       {
         id: "receipt-1",
@@ -61,7 +91,10 @@ const MentorDashboard = () => {
     ] as Receipt[],
   });
 
-  // Calculate total earnings
+  const [sessionNotes, setSessionNotes] = useState("");
+  const [activeSession, setActiveSession] = useState<string | null>(null);
+
+  // Calculate total earnings and sessions stats
   const totalEarnings = calculatePayout(mentor.sessions);
   const pendingAmount = mentor.receipts
     .filter((r) => r.status === "Pending")
@@ -69,6 +102,49 @@ const MentorDashboard = () => {
   const paidAmount = mentor.receipts
     .filter((r) => r.status === "Paid")
     .reduce((sum, r) => sum + r.totalAmount, 0);
+  
+  const upcomingSessions = mentor.sessions.filter(s => s.status === 'upcoming').length;
+  const completedSessions = mentor.sessions.filter(s => s.status === 'completed').length;
+  const cancelledSessions = mentor.sessions.filter(s => s.status === 'cancelled').length;
+
+  // Update session status
+  const updateSessionStatus = (sessionId: string, status: SessionStatus) => {
+    const updatedSessions = mentor.sessions.map(session =>
+      session.id === sessionId ? { ...session, status } : session
+    );
+    
+    setMentor({
+      ...mentor,
+      sessions: updatedSessions,
+    });
+    
+    toast({
+      title: "Session updated",
+      description: `Session marked as ${status}`,
+    });
+  };
+
+  // Save session notes
+  const saveSessionNotes = (sessionId: string) => {
+    if (!sessionNotes.trim()) return;
+    
+    const updatedSessions = mentor.sessions.map(session =>
+      session.id === sessionId ? { ...session, notes: sessionNotes } : session
+    );
+    
+    setMentor({
+      ...mentor,
+      sessions: updatedSessions,
+    });
+    
+    setSessionNotes("");
+    setActiveSession(null);
+    
+    toast({
+      title: "Notes saved",
+      description: "Session notes have been updated",
+    });
+  };
 
   // Chart data
   const monthlyData = Array.from({ length: 6 }, (_, i) => {
@@ -81,6 +157,20 @@ const MentorDashboard = () => {
       sessions: 5 + Math.floor(Math.random() * 10), // Dummy data
     };
   }).reverse();
+
+  // Function to get badge color based on status
+  const getStatusBadgeClass = (status?: SessionStatus) => {
+    switch (status) {
+      case 'completed':
+        return "bg-green-500";
+      case 'upcoming':
+        return "bg-blue-500";
+      case 'cancelled':
+        return "bg-red-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
 
   return (
     <Layout>
@@ -194,16 +284,17 @@ const MentorDashboard = () => {
 
         <Tabs defaultValue="sessions" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="sessions">Recent Sessions</TabsTrigger>
+            <TabsTrigger value="sessions">Upcoming Sessions</TabsTrigger>
+            <TabsTrigger value="completed">Completed Sessions</TabsTrigger>
             <TabsTrigger value="receipts">Receipts</TabsTrigger>
           </TabsList>
           
           <TabsContent value="sessions">
             <Card>
               <CardHeader>
-                <CardTitle>Your Sessions</CardTitle>
+                <CardTitle>Your Upcoming Sessions</CardTitle>
                 <CardDescription>
-                  View all your recent mentoring sessions
+                  View and manage your upcoming mentoring sessions
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -217,20 +308,200 @@ const MentorDashboard = () => {
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Duration</th>
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Rate</th>
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Amount</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="[&_tr:last-child]:border-0">
-                        {mentor.sessions.map((session) => (
-                          <tr key={session.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                            <td className="p-4 align-middle">{formatDate(session.date)}</td>
-                            <td className="p-4 align-middle">{session.type}</td>
-                            <td className="p-4 align-middle">{calculateDuration(session.duration)}</td>
-                            <td className="p-4 align-middle">{formatCurrency(session.ratePerHour)}/hr</td>
-                            <td className="p-4 align-middle">
-                              {formatCurrency((session.ratePerHour / 60) * session.duration)}
-                            </td>
-                          </tr>
-                        ))}
+                        {mentor.sessions
+                          .filter(session => session.status === 'upcoming')
+                          .map((session) => (
+                            <tr key={session.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                              <td className="p-4 align-middle">{formatDate(session.date)}</td>
+                              <td className="p-4 align-middle">{session.type}</td>
+                              <td className="p-4 align-middle">{calculateDuration(session.duration)}</td>
+                              <td className="p-4 align-middle">{formatCurrency(session.ratePerHour)}/hr</td>
+                              <td className="p-4 align-middle">
+                                {formatCurrency((session.ratePerHour / 60) * session.duration)}
+                              </td>
+                              <td className="p-4 align-middle">
+                                <Badge className={getStatusBadgeClass(session.status)}>{session.status}</Badge>
+                              </td>
+                              <td className="p-4 align-middle">
+                                <div className="flex items-center gap-2">
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="outline" size="sm">
+                                        <Check className="h-4 w-4 mr-1" />
+                                        Complete
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Mark session as completed?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          This will mark the session as completed and allow you to add notes about the session.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <div className="mb-4">
+                                        <textarea 
+                                          className="w-full h-24 p-2 border rounded"
+                                          placeholder="Add session notes (optional)"
+                                          value={sessionNotes}
+                                          onChange={(e) => setSessionNotes(e.target.value)}
+                                        />
+                                      </div>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel onClick={() => setSessionNotes("")}>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction 
+                                          onClick={() => {
+                                            updateSessionStatus(session.id, 'completed');
+                                            if (sessionNotes) {
+                                              saveSessionNotes(session.id);
+                                            }
+                                          }}
+                                        >
+                                          Complete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                  
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="outline" size="sm" className="bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-600">
+                                        <X className="h-4 w-4 mr-1" />
+                                        Cancel
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Cancel this session?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          This action cannot be undone. The session will be marked as cancelled.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Keep Session</AlertDialogCancel>
+                                        <AlertDialogAction 
+                                          className="bg-red-500 hover:bg-red-600"
+                                          onClick={() => updateSessionStatus(session.id, 'cancelled')}
+                                        >
+                                          Cancel Session
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="completed">
+            <Card>
+              <CardHeader>
+                <CardTitle>Completed Sessions</CardTitle>
+                <CardDescription>
+                  Review your completed and cancelled sessions
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border">
+                  <div className="w-full overflow-auto">
+                    <table className="w-full caption-bottom text-sm">
+                      <thead className="border-b [&_tr]:border-b">
+                        <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Date</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Type</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Duration</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Amount</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="[&_tr:last-child]:border-0">
+                        {mentor.sessions
+                          .filter(session => session.status === 'completed' || session.status === 'cancelled')
+                          .map((session) => (
+                            <tr key={session.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                              <td className="p-4 align-middle">{formatDate(session.date)}</td>
+                              <td className="p-4 align-middle">{session.type}</td>
+                              <td className="p-4 align-middle">{calculateDuration(session.duration)}</td>
+                              <td className="p-4 align-middle">
+                                {formatCurrency((session.ratePerHour / 60) * session.duration)}
+                              </td>
+                              <td className="p-4 align-middle">
+                                <Badge className={getStatusBadgeClass(session.status)}>
+                                  {session.status}
+                                </Badge>
+                              </td>
+                              <td className="p-4 align-middle">
+                                {session.notes ? (
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" size="sm">View Notes</Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent>
+                                      <div className="space-y-2">
+                                        <h4 className="font-medium">Session Notes</h4>
+                                        <p className="text-sm">{session.notes}</p>
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                ) : (
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm"
+                                    onClick={() => {
+                                      setActiveSession(session.id);
+                                      setSessionNotes(session.notes || "");
+                                    }}
+                                  >
+                                    Add Notes
+                                  </Button>
+                                )}
+                                
+                                {activeSession === session.id && (
+                                  <AlertDialog open={true} onOpenChange={() => setActiveSession(null)}>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Add Session Notes</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Add notes about this completed session.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <div className="mb-4">
+                                        <textarea 
+                                          className="w-full h-24 p-2 border rounded"
+                                          placeholder="Session notes"
+                                          value={sessionNotes}
+                                          onChange={(e) => setSessionNotes(e.target.value)}
+                                        />
+                                      </div>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel onClick={() => {
+                                          setActiveSession(null);
+                                          setSessionNotes("");
+                                        }}>
+                                          Cancel
+                                        </AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => saveSessionNotes(session.id)}>
+                                          Save Notes
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </div>
