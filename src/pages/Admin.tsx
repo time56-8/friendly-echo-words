@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +10,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell
 } from "recharts";
-import { Calendar, ChevronDown, Download, FileText, Filter, MessageSquare, Plus, Upload, Users } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, 
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Calendar, ChevronDown, Download, FileText, Filter, MessageSquare, Plus, Upload, Users, Clock, CalendarCheck } from "lucide-react";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -21,7 +24,8 @@ import { parseCSV } from "@/lib/csv-parser";
 import { formatCurrency, formatDate, calculateDuration } from "@/lib/utils";
 import { calculatePayout } from "@/lib/payout-calculator";
 import { generateReceipt } from "@/lib/receipt-generator";
-import type { Session, Mentor } from "@/types";
+import { SessionDialog } from "@/components/SessionDialog";
+import type { Session, Mentor, Receipt } from "@/types";
 
 // Define a new interface for the mentor data with additional properties
 interface MentorWithSessions {
@@ -32,12 +36,24 @@ interface MentorWithSessions {
 }
 
 const AdminDashboard = () => {
+  // State variables
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedMentorId, setSelectedMentorId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<string>("last30");
-  const [mentorsList, setMentorsList] = useState<Mentor[]>([]);
+  const [mentorsList, setMentorsList] = useState<Mentor[]>([
+    { id: "mentor-1", name: "Jane Smith", email: "jane.smith@example.com" },
+    { id: "mentor-2", name: "John Davis", email: "john.davis@example.com" },
+    { id: "mentor-3", name: "Sarah Wilson", email: "sarah.wilson@example.com" },
+  ]);
+  const [isAddSessionOpen, setIsAddSessionOpen] = useState(false);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [selectedTab, setSelectedTab] = useState("mentors");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+  
   const { toast } = useToast();
 
+  // Handle file upload for importing sessions
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -64,14 +80,21 @@ const AdminDashboard = () => {
     reader.readAsText(file);
   };
 
+  // Handle adding a new session
   const handleAddSession = () => {
-    // This would open a modal to add a session manually
+    setIsAddSessionOpen(true);
+  };
+
+  // Handle session addition from the dialog
+  const handleSessionAdded = (newSession: Session) => {
+    setSessions(prevSessions => [...prevSessions, newSession]);
     toast({
-      title: "Add session",
-      description: "Session creation form will appear here",
+      title: "Session added",
+      description: `Successfully added session with ${newSession.mentorName}`,
     });
   };
 
+  // Handle generating receipt for a mentor
   const handleGenerateReceipt = () => {
     if (!selectedMentorId) {
       toast({
@@ -92,14 +115,19 @@ const AdminDashboard = () => {
       return;
     }
 
-    // Create a proper Mentor object with all required properties
-    const mentor: Mentor = {
-      id: selectedMentorId,
-      name: mentorSessions[0]?.mentorName || "Unknown Mentor",
-      email: `${selectedMentorId}@example.com`, // Add email to satisfy the Mentor interface
-    };
+    // Find the mentor in the mentorsList
+    const mentor = mentorsList.find(m => m.id === selectedMentorId);
+    if (!mentor) {
+      toast({
+        title: "Mentor not found",
+        description: "Could not find mentor details",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const receipt = generateReceipt(mentor, mentorSessions);
+    setReceipts(prevReceipts => [...prevReceipts, receipt]);
     
     toast({
       title: "Receipt generated",
@@ -108,6 +136,7 @@ const AdminDashboard = () => {
     });
   };
 
+  // Add a new mentor
   const addMentor = () => {
     const newMentor: Mentor = {
       id: `mentor-${mentorsList.length + 1}`,
@@ -116,6 +145,29 @@ const AdminDashboard = () => {
     };
     
     setMentorsList((prev) => [...prev, newMentor]);
+    toast({
+      title: "Mentor added",
+      description: `${newMentor.name} has been added to the system`,
+    });
+  };
+
+  // Handle deleting a session
+  const confirmDeleteSession = (sessionId: string) => {
+    setSessionToDelete(sessionId);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteSession = () => {
+    if (!sessionToDelete) return;
+    
+    setSessions(prevSessions => prevSessions.filter(session => session.id !== sessionToDelete));
+    setIsDeleteDialogOpen(false);
+    setSessionToDelete(null);
+    
+    toast({
+      title: "Session deleted",
+      description: "Session has been successfully removed",
+    });
   };
 
   // Filter sessions based on date range
@@ -180,6 +232,39 @@ const AdminDashboard = () => {
 
   const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE'];
 
+  const handleExportCSV = () => {
+    // Create CSV content
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Date,Mentor,Type,Duration,Rate,Amount\n";
+    
+    filteredSessions.forEach(session => {
+      const amount = (session.ratePerHour / 60) * session.duration;
+      csvContent += `${session.date},${session.mentorName},${session.type},${session.duration},${session.ratePerHour},${amount}\n`;
+    });
+    
+    // Create download link
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `sessions-export-${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    
+    // Trigger download and remove link
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({
+      title: "Export successful",
+      description: "Sessions data has been exported as CSV",
+    });
+  };
+
+  // Calculate summary metrics
+  const totalSessions = filteredSessions.length;
+  const totalPayout = mentorsWithSessions.reduce((sum, mentor) => sum + calculatePayout(mentor.sessions), 0);
+  const totalActiveMentors = mentorsWithSessions.length;
+  const pendingReceipts = totalActiveMentors;
+
   return (
     <Layout>
       <div className="space-y-6 p-4 md:p-6">
@@ -240,7 +325,7 @@ const AdminDashboard = () => {
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{filteredSessions.length}</div>
+              <div className="text-2xl font-bold">{totalSessions}</div>
               <p className="text-xs text-muted-foreground">
                 For {dateRange === "last7" ? "past week" : dateRange === "last15" ? "past 15 days" : "past month"}
               </p>
@@ -254,7 +339,7 @@ const AdminDashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(mentorsWithSessions.reduce((sum, mentor) => sum + calculatePayout(mentor.sessions), 0))}
+                {formatCurrency(totalPayout)}
               </div>
               <p className="text-xs text-muted-foreground">
                 After platform fees and taxes
@@ -268,7 +353,7 @@ const AdminDashboard = () => {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mentorsWithSessions.length}</div>
+              <div className="text-2xl font-bold">{totalActiveMentors}</div>
               <p className="text-xs text-muted-foreground">
                 With recent sessions
               </p>
@@ -281,7 +366,7 @@ const AdminDashboard = () => {
               <MessageSquare className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mentorsWithSessions.length}</div>
+              <div className="text-2xl font-bold">{pendingReceipts}</div>
               <p className="text-xs text-muted-foreground">
                 Ready to be generated
               </p>
@@ -289,14 +374,22 @@ const AdminDashboard = () => {
           </Card>
         </div>
 
-        <Tabs defaultValue="mentors" className="space-y-4">
+        <Tabs defaultValue="mentors" className="space-y-4" value={selectedTab} onValueChange={setSelectedTab}>
           <TabsList>
             <TabsTrigger value="mentors">Mentors</TabsTrigger>
             <TabsTrigger value="sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="receipts">Receipts</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
           
           <TabsContent value="mentors" className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Mentor Management</h2>
+              <Button onClick={addMentor} variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Mentor
+              </Button>
+            </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {mentorsWithSessions.map(mentor => (
                 <Card 
@@ -368,6 +461,7 @@ const AdminDashboard = () => {
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Duration</th>
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Rate (₹/hr)</th>
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Amount</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="[&_tr:last-child]:border-0">
@@ -381,6 +475,15 @@ const AdminDashboard = () => {
                             <td className="p-4 align-middle">
                               {formatCurrency((session.ratePerHour / 60) * session.duration)}
                             </td>
+                            <td className="p-4 align-middle">
+                              <Button 
+                                variant="destructive" 
+                                size="sm"
+                                onClick={() => confirmDeleteSession(session.id)}
+                              >
+                                Delete
+                              </Button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -389,11 +492,72 @@ const AdminDashboard = () => {
                 </div>
               </CardContent>
               <CardFooter>
-                <Button variant="outline" className="ml-auto">
+                <Button variant="outline" className="ml-auto" onClick={handleExportCSV}>
                   <Download className="mr-2 h-4 w-4" />
                   Export CSV
                 </Button>
               </CardFooter>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="receipts">
+            <Card>
+              <CardHeader>
+                <CardTitle>Receipts</CardTitle>
+                <CardDescription>
+                  Manage payment receipts for mentors
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border">
+                  <div className="w-full overflow-auto">
+                    <table className="w-full caption-bottom text-sm">
+                      <thead className="border-b [&_tr]:border-b">
+                        <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Receipt ID</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Mentor</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Generated Date</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Amount</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="[&_tr:last-child]:border-0">
+                        {receipts.map((receipt) => (
+                          <tr key={receipt.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                            <td className="p-4 align-middle">{receipt.id.substring(0, 8)}</td>
+                            <td className="p-4 align-middle">{receipt.mentorName}</td>
+                            <td className="p-4 align-middle">{formatDate(receipt.generatedDate)}</td>
+                            <td className="p-4 align-middle">{formatCurrency(receipt.totalAmount)}</td>
+                            <td className="p-4 align-middle">
+                              <span className={`px-2 py-1 rounded-full text-xs ${
+                                receipt.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                                receipt.status === 'Paid' ? 'bg-green-100 text-green-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {receipt.status}
+                              </span>
+                            </td>
+                            <td className="p-4 align-middle">
+                              <Button variant="outline" size="sm">
+                                <Download className="mr-2 h-4 w-4" />
+                                Download
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {receipts.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="p-4 text-center text-muted-foreground">
+                              No receipts generated yet. Select a mentor and generate a receipt.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </CardContent>
             </Card>
           </TabsContent>
           
@@ -456,9 +620,34 @@ const AdminDashboard = () => {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Session Dialog */}
+        <SessionDialog 
+          open={isAddSessionOpen}
+          onOpenChange={setIsAddSessionOpen}
+          onAddSession={handleSessionAdded}
+          mentors={mentorsList}
+        />
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the selected session and remove it from our servers.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteSession} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Layout>
   );
 };
 
 export default AdminDashboard;
+
